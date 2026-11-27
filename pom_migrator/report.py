@@ -14,10 +14,18 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from .gitinfo import GitInfo
+from .gitinfo import PROVIDER_AZURE, PROVIDER_GITHUB, PROVIDER_LOCAL, PROVIDER_OTHER, REMOTE, GitInfo
 from .pom import Dependency
 from .scanner import Analysis, Level, Project, Role, library_graph
 
+PROVIDER_STYLE = {
+    PROVIDER_AZURE: "bold blue",
+    PROVIDER_GITHUB: "bold white",
+    PROVIDER_LOCAL: "dim",
+    PROVIDER_OTHER: "magenta",
+    None: "red",
+}
+PROVIDER_ORDER = [PROVIDER_AZURE, PROVIDER_GITHUB, PROVIDER_OTHER, PROVIDER_LOCAL, None]
 ROLE_STYLE = {Role.PARENT: "bold magenta", Role.LIBRARY: "bold cyan", Role.SERVICE: "bold green"}
 LEVEL_STYLE = {Level.ERROR: "bold red", Level.WARNING: "yellow", Level.INFO: "dim"}
 LEVEL_ICON = {Level.ERROR: "✖", Level.WARNING: "⚠", Level.INFO: "ℹ"}
@@ -112,6 +120,16 @@ def render_summary(console: Console, analysis: Analysis) -> None:
     grid.add_row(Text(str(len(analysis.libraries)), style=ROLE_STYLE[Role.LIBRARY]), "libraries")
     grid.add_row(Text(str(len(analysis.services)), style=ROLE_STYLE[Role.SERVICE]), "services")
     grid.add_row(Text(str(len(analysis.excluded)), style="dim"), "excluded (not using parent)")
+    azure = sum(1 for p in analysis.projects if p.git.provider == PROVIDER_AZURE)
+    github = sum(1 for p in analysis.projects if p.git.provider == PROVIDER_GITHUB)
+    remotes = Text()
+    remotes.append(f"{azure} Azure DevOps", style=PROVIDER_STYLE[PROVIDER_AZURE] if azure else "dim")
+    remotes.append("  ")
+    remotes.append(f"{github} GitHub", style=PROVIDER_STYLE[PROVIDER_GITHUB] if github else "dim")
+    other = len(analysis.projects) - azure - github
+    if other:
+        remotes.append(f"  {other} other/none", style="dim")
+    grid.add_row(Text("remotes", style="bold"), remotes)
     lib_deps = Text("yes", style="bold yellow") if graph.has_dependencies else Text("no", style="bold green")
     grid.add_row(lib_deps, "libraries depending on other libraries")
     issues = Text()
@@ -180,6 +198,37 @@ def render_branches(console: Console, analysis: Analysis) -> None:
                 line.append(f"  ● {project.git.changes} changed", style="yellow")
             node.add(line)
     console.print(tree)
+
+
+def _provider_label(provider: str | None) -> str:
+    return provider or f"no '{REMOTE}' / no git"
+
+
+def render_remotes(console: Console, analysis: Analysis) -> None:
+    by_provider: dict[str | None, list[Project]] = defaultdict(list)
+    for project in analysis.projects:
+        by_provider[project.git.provider].append(project)
+
+    azure = by_provider.get(PROVIDER_AZURE, [])
+    if azure:
+        console.print(Text(f"Still on Azure DevOps: {len(azure)} of {len(analysis.projects)} projects", style="bold blue"))
+    else:
+        console.print(Text("No project uses Azure DevOps.", style="bold green"))
+
+    table = _table(f"Git remotes ('{REMOTE}')")
+    table.add_column("Provider")
+    table.add_column("Project", style="bold")
+    table.add_column("Role")
+    table.add_column("Remote URL", overflow="fold")
+    for provider in PROVIDER_ORDER:
+        projects = by_provider.get(provider, [])
+        for i, project in enumerate(projects):
+            label = Text(f"{_provider_label(provider)} ({len(projects)})" if i == 0 else "", style=PROVIDER_STYLE[provider])
+            url = project.git.remote_display or ("not a git repository" if not project.git.is_repo else "—")
+            table.add_row(label, project.name, _role(project.role), Text(url, style="dim" if not project.git.remote_url else ""))
+        if projects:
+            table.add_section()
+    console.print(table)
 
 
 def render_parent_versions(console: Console, analysis: Analysis) -> None:
@@ -286,6 +335,7 @@ def render_full(console: Console, analysis: Analysis) -> None:
         render_summary,
         render_projects,
         render_branches,
+        render_remotes,
         render_parent_versions,
         render_library_dependencies,
         render_library_usage,
@@ -335,6 +385,9 @@ def _to_dict(analysis: Analysis) -> dict:
                 "ahead": p.git.ahead,
                 "behind": p.git.behind,
                 "toplevel": str(p.git.toplevel) if p.git.toplevel else None,
+                "remoteUrl": p.git.remote_display,
+                "remoteHost": p.git.remote_host,
+                "provider": p.git.provider,
             },
             "libraryDependencies": [dep(d) for d in p.library_dependencies],
         }

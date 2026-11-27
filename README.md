@@ -11,6 +11,7 @@ The analysis is **read-only**: it never modifies POMs or git repositories. The o
 | Summary | parent coordinates, number of libraries / services / excluded projects, issue counts |
 | Projects | role, directory, artifact, version, `<parent>` version, git branch, working-tree state, ahead/behind upstream |
 | Branches | projects grouped by the branch they have checked out (detached HEAD flagged) |
+| Git remotes | `origin` URL of every project grouped by provider: **Azure DevOps** (`dev.azure.com`, `ssh.dev.azure.com`, `*.visualstudio.com`), **GitHub** (`github.com`, `*.ghe.com`), other, none. Projects still on Azure are listed first. Credentials in URLs are shown as `***`. |
 | Parent versions in use | which parent version each library and service references (shows version drift) |
 | Library → library dependencies | **does any library depend on another library?**, which ones, cycles, build order |
 | Who uses which library | for every library: the libraries/services that use it, with an explicit or managed version |
@@ -96,7 +97,9 @@ Interactive menu:
 3  Libraries only                 8  Who uses which library
 4  Services only                  9  Excluded projects
 5  Branches                       i  Issues
+g  Git remotes (Azure DevOps / GitHub)
 f  Full report    e  Export report    r  Re-scan    q  Quit
+s  Reset all to clean origin/main (destructive)
 ```
 
 ### Reset all to clean `origin/main` (menu `s`, destructive)

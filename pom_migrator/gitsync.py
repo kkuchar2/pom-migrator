@@ -10,7 +10,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REMOTE = "origin"
+from .gitinfo import REMOTE, host_of
+
 BRANCH = "main"
 BACKUP_PREFIX = "backup/pom-migrator"
 
@@ -98,20 +99,12 @@ class SyncResult:
 
 
 def remote_host(repo: Path) -> str | None:
-    """Host of the remote URL (https://host/..., ssh://user@host/..., user@host:path), or None."""
+    """Host of the remote URL, or None when the remote does not exist."""
     try:
         result = _git(repo, "remote", "get-url", REMOTE)
     except (subprocess.TimeoutExpired, OSError):
         return None
-    if result.returncode != 0:
-        return None
-    url = result.stdout.strip()
-    if "://" in url:
-        authority = url.split("://", 1)[1].split("/", 1)[0]
-        return authority.rsplit("@", 1)[-1].split(":", 1)[0].lower() or None
-    if ":" in url and not url.startswith(("/", ".")) and not (len(url) > 1 and url[1] == ":"):
-        return url.split(":", 1)[0].rsplit("@", 1)[-1].lower() or None  # scp-like: git@host:org/repo
-    return "local"  # filesystem path (incl. C:\...)
+    return host_of(result.stdout) if result.returncode == 0 else None
 
 
 def fetch(repo: Path) -> str | None:

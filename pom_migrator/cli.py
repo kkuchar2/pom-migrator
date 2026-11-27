@@ -25,6 +25,7 @@ from .report import (
     render_library_usage,
     render_parent_versions,
     render_projects,
+    render_remotes,
     render_summary,
 )
 from . import sync_ui
@@ -37,6 +38,7 @@ MENU = [
     ("3", "Libraries only", lambda c, a: render_projects(c, a, {Role.PARENT, Role.LIBRARY})),
     ("4", "Services only", lambda c, a: render_projects(c, a, {Role.PARENT, Role.SERVICE})),
     ("5", "Branches", lambda c, a: render_branches(c, a)),
+    ("g", "Git remotes (Azure DevOps / GitHub)", lambda c, a: render_remotes(c, a)),
     ("6", "Parent versions in use", lambda c, a: render_parent_versions(c, a)),
     ("7", "Library → library dependencies", lambda c, a: render_library_dependencies(c, a)),
     ("8", "Who uses which library", lambda c, a: render_library_usage(c, a)),
