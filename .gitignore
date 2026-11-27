@@ -4,3 +4,4 @@ __pycache__/
 pom-migrator.toml
 pom-report.*
 pom-migrator-build.log
+pom-migrator-test.log

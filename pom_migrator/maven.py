@@ -43,13 +43,14 @@ def run_build(
     skip_tests: bool,
     log_file: Path,
     on_progress: Callable[[str], None] | None = None,
+    goals: tuple[str, ...] = ("clean", "verify"),
+    extra_args: tuple[str, ...] = (),
 ) -> BuildResult:
     maven = find_maven(project_dir)
     if maven is None:
         return BuildResult(command=[], success=False, errors=["Maven not found (no mvnw in parent, no mvn on PATH)"])
 
-    goals = ["clean", "verify"]
-    command = [*maven, "-B", "-ntp", "-f", str(project_dir / "pom.xml"), *goals]
+    command = [*maven, "-B", "-ntp", "-f", str(project_dir / "pom.xml"), *goals, *extra_args]
     if skip_tests:
         command.append("-DskipTests")
     result = BuildResult(command=command, success=False, log_file=log_file)

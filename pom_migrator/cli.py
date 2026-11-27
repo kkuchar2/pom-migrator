@@ -28,7 +28,7 @@ from .report import (
     render_remotes,
     render_summary,
 )
-from . import consolidate_ui, sync_ui
+from . import consolidate_ui, sync_ui, tests_ui
 from .gitsync import BRANCH, REMOTE
 from .scanner import Analysis, Level, Role, analyze
 
@@ -167,7 +167,7 @@ def _export_prompt(console: Console, analysis: Analysis) -> None:
 
 
 def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> None:
-    keys = [key for key, _, _ in MENU] + ["e", "r", "s", "c", "q"]
+    keys = [key for key, _, _ in MENU] + ["e", "r", "s", "c", "t", "q"]
     while True:
         console.print()
         menu = Table(show_header=False, box=None, padding=(0, 1))
@@ -177,6 +177,7 @@ def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> N
         menu.add_row("[bold cyan]r[/]", "Re-scan")
         menu.add_row("[bold red]s[/]", f"Reset all to clean {REMOTE}/{BRANCH}  [red](destructive)[/]")
         menu.add_row("[bold yellow]c[/]", "Consolidate libraries into parent  [yellow](modifies parent)[/]")
+        menu.add_row("[bold cyan]t[/]", "Test results per module in parent  [dim](runs mvn verify)[/]")
         menu.add_row("[bold cyan]q[/]", "Quit")
         console.print(Panel(menu, title="[bold]Menu[/]", border_style="cyan", expand=False))
 
@@ -193,6 +194,8 @@ def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> N
             if consolidate_ui.run(console, analysis):
                 analysis = _run_analysis(console, config)
                 render_summary(console, analysis)
+        elif choice == "t":
+            tests_ui.run(console, analysis)
         elif choice == "s":
             if sync_ui.run(console, analysis):
                 analysis = _run_analysis(console, config)

@@ -101,6 +101,7 @@ g  Git remotes (Azure DevOps / GitHub)
 f  Full report    e  Export report    r  Re-scan    q  Quit
 s  Reset all to clean origin/main (destructive)
 c  Consolidate libraries into parent (modifies parent)
+t  Test results per module in parent (runs mvn verify)
 ```
 
 ### Reset all to clean `origin/main` (menu `s`, destructive)
@@ -143,6 +144,12 @@ Why `${revision}` and not `${project.version}` in `dependencyManagement`: inheri
 
 **Pipeline change:** build the parent with `mvn -Drevision=<build number> deploy`. Without `-Drevision`, the local default (e.g. `0.0.1-SNAPSHOT`) is used.
 
+### Test results per module (menu `t`)
+
+For a parent that already has `<modules>` (after `c`). Runs `mvn clean verify -fae -Dmaven.test.failure.ignore=true`, so a failing test does not stop the other modules, then reads `target/surefire-reports` and `target/failsafe-reports` of every module.
+
+Output: one row per module (result, tests, passed, failed, errors, skipped, time) with a total row, a list of failing tests with their message, and optionally a per-class table. Modules that did not compile show `build failed`; modules Maven skipped because of that show `not run`, with the compile errors printed below. If reports from an earlier build exist, you can show them without running Maven. Old reports are deleted before a new run so skipped modules never show stale results. Full log: `pom-migrator-test.log`.
+
 Exit codes: `0` = no errors, `1` = the report contains errors, `2` = configuration problem, `130` = interrupted.
 
 ## Project layout
@@ -159,6 +166,8 @@ pom_migrator/
 ├── pomedit.py    # formatting-preserving pom.xml editor (text splices, comments kept)
 ├── consolidate.py      # plan / copy / rewrite POMs / revert
 ├── consolidate_ui.py   # interactive consolidation flow + build verification
+├── testreport.py # reads surefire/failsafe XML reports per module
+├── tests_ui.py   # interactive test results table
 ├── maven.py      # runs mvn, condenses output (module results, errors)
 ├── scanner.py    # classification, library graph (cycles, build order), checks
 └── report.py     # rich rendering + export (html / txt / json)
