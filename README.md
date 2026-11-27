@@ -100,6 +100,7 @@ Interactive menu:
 g  Git remotes (Azure DevOps / GitHub)
 f  Full report    e  Export report    r  Re-scan    q  Quit
 s  Reset all to clean origin/main (destructive)
+c  Consolidate libraries into parent (modifies parent)
 ```
 
 ### Reset all to clean `origin/main` (menu `s`, destructive)
@@ -118,6 +119,30 @@ Backup and recovery:
 
 Remote and branch name are `REMOTE` / `BRANCH` in `pom_migrator/gitsync.py` (`origin` / `main`).
 
+### Consolidate libraries into parent (menu `c`)
+
+Copies every library into the parent directory as a Maven module, rewrites the POMs and verifies the result with a Maven build. **The source library repositories are only read.** Only the parent changes, on a new branch, and nothing is committed.
+
+Preconditions: the parent's working tree is clean, no library directory exists in the parent yet, and there are no library dependency cycles.
+
+| Where | Change |
+|---|---|
+| parent `pom.xml` | `<version>` → `${revision}` (old value kept as the `<revision>` property = local default) |
+| | `<modules>` with every library (in dependency order) |
+| | `dependencyManagement`: library entries set to `${revision}` (missing ones are added) |
+| | `flatten-maven-plugin` (`resolveCiFriendliesOnly`): published POMs contain the real version |
+| parent `.gitignore` | `.flattened-pom.xml` |
+| `parent/<library>/` | copied files: tracked + untracked-not-ignored (no `target/`, `.git`, IDE files, `*.iml`, Maven wrapper) |
+| `parent/<library>/pom.xml` | `<parent><version>` → `${revision}`, `<relativePath>` removed, own `<version>` removed, explicit versions of other libraries removed |
+
+The POMs are edited as text: comments, blank lines and formatting stay as they are.
+
+Flow: preview of every change → branch name (default `consolidate-libraries`) → confirm → copy and rewrite → optional `mvn clean verify` (tests optional). The output is a compact per-module result plus errors; the full log goes to `pom-migrator-build.log`. If the build fails, you can revert automatically (removes the copied modules, resets the parent, switches back, deletes the branch).
+
+Why `${revision}` and not `${project.version}` in `dependencyManagement`: inherited properties are resolved in the child, so a service would get **its own** version for the libraries. With `${revision}` plus flatten, published POMs contain fixed numbers.
+
+**Pipeline change:** build the parent with `mvn -Drevision=<build number> deploy`. Without `-Drevision`, the local default (e.g. `0.0.1-SNAPSHOT`) is used.
+
 Exit codes: `0` = no errors, `1` = the report contains errors, `2` = configuration problem, `130` = interrupted.
 
 ## Project layout
@@ -131,6 +156,10 @@ pom_migrator/
 ├── gitinfo.py    # read-only git state
 ├── gitsync.py    # reset to origin/main (fetch, plan, backup, execute)
 ├── sync_ui.py    # interactive reset flow (preview, confirm, results)
+├── pomedit.py    # formatting-preserving pom.xml editor (text splices, comments kept)
+├── consolidate.py      # plan / copy / rewrite POMs / revert
+├── consolidate_ui.py   # interactive consolidation flow + build verification
+├── maven.py      # runs mvn, condenses output (module results, errors)
 ├── scanner.py    # classification, library graph (cycles, build order), checks
 └── report.py     # rich rendering + export (html / txt / json)
 ```

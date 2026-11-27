@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 pom-migrator.toml
 pom-report.*
+pom-migrator-build.log
