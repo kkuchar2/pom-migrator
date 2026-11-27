@@ -1,0 +1,18 @@
+# pom-migrator workspace configuration
+# Copy to pom-migrator.toml and adjust.
+
+[workspace]
+# Directory that contains all projects (absolute, ~, or relative to this file)
+root = "~/projects"
+
+# Only directories starting with this prefix are scanned ("" = all)
+prefix = "acme-"
+
+# Directory name of the parent project
+parent = "acme-parent"
+
+# Directory names of library projects; every other project using parent is a service
+libraries = [
+    "acme-lib-common",
+    "acme-lib-security",
+]
