@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,7 @@ class BuildResult:
     total_time: str | None = None
     log_file: Path | None = None
     exit_code: int | None = None
+    wall_seconds: float = 0.0
 
 
 def find_maven(project_dir: Path) -> list[str] | None:
@@ -45,6 +47,7 @@ def run_build(
     on_progress: Callable[[str], None] | None = None,
     goals: tuple[str, ...] = ("clean", "verify"),
     extra_args: tuple[str, ...] = (),
+    append_log: bool = False,
 ) -> BuildResult:
     maven = find_maven(project_dir)
     if maven is None:
@@ -57,7 +60,8 @@ def run_build(
 
     errors: list[str] = []
     in_summary = False
-    with log_file.open("w", encoding="utf-8") as log:
+    started = time.monotonic()
+    with log_file.open("a" if append_log else "w", encoding="utf-8") as log:
         log.write("$ " + " ".join(command) + "\n\n")
         process = subprocess.Popen(
             command,
@@ -88,6 +92,7 @@ def run_build(
             if line.startswith("[ERROR]") and len(errors) < 200:
                 errors.append(line[len("[ERROR]"):].strip())
         result.exit_code = process.wait()
+    result.wall_seconds = time.monotonic() - started
 
     result.success = result.success and result.exit_code == 0
     # Keep the informative part of Maven's error output, drop the generic help footer.

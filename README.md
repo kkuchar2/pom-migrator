@@ -101,7 +101,7 @@ g  Git remotes (Azure DevOps / GitHub)
 f  Full report    e  Export report    r  Re-scan    q  Quit
 s  Reset all to clean origin/main (destructive)
 c  Consolidate libraries into parent (modifies parent)
-t  Test results per module in parent (runs mvn verify)
+t  Build time + test results per module in parent (runs mvn)
 ```
 
 ### Reset all to clean `origin/main` (menu `s`, destructive)
@@ -144,11 +144,16 @@ Why `${revision}` and not `${project.version}` in `dependencyManagement`: inheri
 
 **Pipeline change:** build the parent with `mvn -Drevision=<build number> deploy`. Without `-Drevision`, the local default (e.g. `0.0.1-SNAPSHOT`) is used.
 
-### Test results per module (menu `t`)
+### Build time + test results per module (menu `t`)
 
-For a parent that already has `<modules>` (after `c`). Runs `mvn clean verify -fae -Dmaven.test.failure.ignore=true`, so a failing test does not stop the other modules, then reads `target/surefire-reports` and `target/failsafe-reports` of every module.
+For a parent that already has `<modules>` (after `c`). Two timed Maven runs:
 
-Output: one row per module (result, tests, passed, failed, errors, skipped, time) with a total row, a list of failing tests with their message, and optionally a per-class table. Modules that did not compile show `build failed`; modules Maven skipped because of that show `not run`, with the compile errors printed below. If reports from an earlier build exist, you can show them without running Maven. Old reports are deleted before a new run so skipped modules never show stale results. Full log: `pom-migrator-test.log`.
+1. `mvn clean package -DskipTests -fae`: clean build time (compile, test-compile, jars), total and per module.
+2. `mvn verify -fae -Dmaven.test.failure.ignore=true` (no clean): runs the tests of every module. A failing test does not stop the other modules.
+
+Results are read from `target/surefire-reports` and `target/failsafe-reports` of every module.
+
+Output: one row per module (result, tests, passed, failed, errors, skipped, build time, test time) with a total row, a list of failing tests with their message, a timing panel (clean build, test run, total), and optionally a per-class table. If the clean build fails, its errors are shown and you choose whether to run the tests of the modules that did build; those show `build failed` / `not run`. If reports from an earlier build exist, you can show them without running Maven. Old reports are deleted before a new run so skipped modules never show stale results. Full log of both runs: `pom-migrator-test.log`.
 
 Exit codes: `0` = no errors, `1` = the report contains errors, `2` = configuration problem, `130` = interrupted.
 

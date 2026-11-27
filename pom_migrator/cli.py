@@ -177,7 +177,7 @@ def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> N
         menu.add_row("[bold cyan]r[/]", "Re-scan")
         menu.add_row("[bold red]s[/]", f"Reset all to clean {REMOTE}/{BRANCH}  [red](destructive)[/]")
         menu.add_row("[bold yellow]c[/]", "Consolidate libraries into parent  [yellow](modifies parent)[/]")
-        menu.add_row("[bold cyan]t[/]", "Test results per module in parent  [dim](runs mvn verify)[/]")
+        menu.add_row("[bold cyan]t[/]", "Build time + test results per module in parent  [dim](runs mvn)[/]")
         menu.add_row("[bold cyan]q[/]", "Quit")
         console.print(Panel(menu, title="[bold]Menu[/]", border_style="cyan", expand=False))
 
