@@ -212,6 +212,12 @@ def render_remotes(console: Console, analysis: Analysis) -> None:
     azure = by_provider.get(PROVIDER_AZURE, [])
     if azure:
         console.print(Text(f"Still on Azure DevOps: {len(azure)} of {len(analysis.projects)} projects", style="bold blue"))
+        for project in azure:
+            line = Text("  • ")
+            line.append(project.name, style="bold")
+            line.append(f"  ({project.role.value})", style=ROLE_STYLE[project.role].replace("bold ", ""))
+            console.print(line)
+        console.print()
     else:
         console.print(Text("No project uses Azure DevOps.", style="bold green"))
 

@@ -77,7 +77,11 @@ class GitInfo:
     @property
     def provider(self) -> str | None:
         host = self.remote_host
-        return provider_of(host) if host else None
+        if host is None:
+            return None
+        if "/_git/" in self.remote_url.replace("\\", "/"):
+            return PROVIDER_AZURE  # Azure DevOps Services and self-hosted Azure DevOps Server (TFS)
+        return provider_of(host)
 
     @property
     def detached(self) -> bool:
