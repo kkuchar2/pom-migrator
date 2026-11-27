@@ -128,7 +128,10 @@ def _create_config_interactively(console: Console, target: Path) -> Config | Non
 def _resolve_config(console: Console, path: Path, interactive: bool) -> Config | None:
     while True:
         try:
-            return load_config(path)
+            config = load_config(path)
+            for warning in config.warnings:
+                console.print(f"[yellow]⚠ {warning}[/]")
+            return config
         except ConfigError as exc:
             console.print(f"[bold red]✖ {exc}[/]")
             if not interactive:

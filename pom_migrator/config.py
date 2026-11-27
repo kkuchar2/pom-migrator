@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ class Config:
     parent_dir   -- directory name of the parent project (relative to root)
     library_dirs -- directory names of library projects (relative to root)
     source       -- the file the config was loaded from (None if built in memory)
+    warnings     -- non-fatal notes from loading (e.g. backslashes taken literally)
     """
 
     root: Path
@@ -30,6 +32,7 @@ class Config:
     parent_dir: str
     library_dirs: tuple[str, ...]
     source: Path | None = None
+    warnings: tuple[str, ...] = ()
 
 
 def _require_str(table: dict, key: str, *, required: bool = True, default: str = "") -> str:
@@ -43,22 +46,81 @@ def _require_str(table: dict, key: str, *, required: bool = True, default: str =
     return value
 
 
-def load_config(path: Path) -> Config:
+# A single-line double-quoted string without inner quotes, e.g. "C:\Users\me\" (paths never contain ").
+_DOUBLE_QUOTED = re.compile(r'"([^"\r\n]*)"')
+
+
+def _backslashes_as_literal(text: str) -> tuple[str, list[str]]:
+    """Turn double-quoted strings containing backslashes into TOML literal strings ('...').
+
+    Lets users write Windows paths naturally: "C:\\Users\\me" is read as C:\\Users\\me.
+    Returns the rewritten text and the original values that were rewritten.
+    """
+    rewritten: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        value = match.group(1)
+        if "\\" not in value or "'" in value:
+            return match.group(0)
+        rewritten.append(value)
+        return f"'{value}'"
+
+    return _DOUBLE_QUOTED.sub(replace, text), rewritten
+
+
+def _parse_toml(path: Path) -> tuple[dict, tuple[str, ...]]:
+    """Parse strictly; on failure retry with backslashes in double quotes taken literally."""
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise ConfigError(f"Config file not found: {path}") from None
-    except tomllib.TOMLDecodeError as exc:
-        message = f"Invalid TOML in {path}: {exc}"
-        if "\\" in path.read_text(encoding="utf-8", errors="replace"):
-            message += (
-                "\nHint: inside double quotes TOML treats \\ as an escape character (e.g. \\U in C:\\Users)."
-                "\n      For Windows paths use single quotes:  root = 'C:\\Users\\me\\projects'"
-                "\n      or forward slashes:                  root = \"C:/Users/me/projects\""
-            )
-        raise ConfigError(message) from None
     except OSError as exc:
         raise ConfigError(f"Cannot read {path}: {exc}") from None
+
+    def lenient() -> tuple[dict, tuple[str, ...]] | None:
+        lenient_text, rewritten = _backslashes_as_literal(text)
+        if not rewritten:
+            return None
+        try:
+            data = tomllib.loads(lenient_text)
+        except tomllib.TOMLDecodeError:
+            return None
+        return data, tuple(f"Backslashes in \"{v}\" taken literally (TOML escapes ignored)" for v in rewritten)
+
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as strict_error:
+        result = lenient()
+        if result:
+            return result
+        message = f"Invalid TOML in {path}: {strict_error}"
+        if "\\" in text:
+            message += (
+                "\nHint: for Windows paths use  root = 'C:\\Users\\me\\projects'"
+                "\n      or  root = \"C:/Users/me/projects\"  (check the closing quote, too)"
+            )
+        raise ConfigError(message) from None
+
+    # Valid TOML can still be wrong: "C:\temp\new" parses, but \t and \n become a tab and a newline.
+    if _contains_control_chars(data):
+        result = lenient()
+        if result:
+            return result
+    return data, ()
+
+
+def _contains_control_chars(value: object) -> bool:
+    if isinstance(value, str):
+        return any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+    if isinstance(value, dict):
+        return any(_contains_control_chars(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_control_chars(v) for v in value)
+    return False
+
+
+def load_config(path: Path) -> Config:
+    data, warnings = _parse_toml(path)
 
     workspace = data.get("workspace")
     if not isinstance(workspace, dict):
@@ -66,14 +128,14 @@ def load_config(path: Path) -> Config:
 
     root_raw = _require_str(workspace, "root")
     prefix = _require_str(workspace, "prefix", required=False)
-    parent_dir = _require_str(workspace, "parent").strip().strip("/")
+    parent_dir = _require_str(workspace, "parent").strip().strip("/\\")
     if not parent_dir:
         raise ConfigError("'workspace.parent' must not be empty")
 
     libraries_raw = workspace.get("libraries", [])
     if not isinstance(libraries_raw, list) or not all(isinstance(x, str) for x in libraries_raw):
         raise ConfigError("'workspace.libraries' must be a list of strings")
-    libraries = [x.strip().strip("/") for x in libraries_raw if x.strip()]
+    libraries = [x.strip().strip("/\\") for x in libraries_raw if x.strip()]
 
     duplicates = sorted({x for x in libraries if libraries.count(x) > 1})
     if duplicates:
@@ -91,6 +153,7 @@ def load_config(path: Path) -> Config:
         parent_dir=parent_dir,
         library_dirs=tuple(libraries),
         source=path.resolve(),
+        warnings=warnings,
     )
 
 
