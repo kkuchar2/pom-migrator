@@ -1,4 +1,4 @@
-"""Interactive command-line entry point (read-only analysis)."""
+"""Interactive command-line entry point."""
 
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ from .report import (
     render_projects,
     render_summary,
 )
+from . import sync_ui
+from .gitsync import BRANCH, REMOTE
 from .scanner import Analysis, Level, Role, analyze
 
 MENU = [
@@ -163,7 +165,7 @@ def _export_prompt(console: Console, analysis: Analysis) -> None:
 
 
 def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> None:
-    keys = [key for key, _, _ in MENU] + ["e", "r", "q"]
+    keys = [key for key, _, _ in MENU] + ["e", "r", "s", "q"]
     while True:
         console.print()
         menu = Table(show_header=False, box=None, padding=(0, 1))
@@ -171,6 +173,7 @@ def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> N
             menu.add_row(f"[bold cyan]{key}[/]", label)
         menu.add_row("[bold cyan]e[/]", "Export report")
         menu.add_row("[bold cyan]r[/]", "Re-scan")
+        menu.add_row("[bold red]s[/]", f"Reset all to clean {REMOTE}/{BRANCH}  [red](destructive)[/]")
         menu.add_row("[bold cyan]q[/]", "Quit")
         console.print(Panel(menu, title="[bold]Menu[/]", border_style="cyan", expand=False))
 
@@ -183,6 +186,10 @@ def _interactive_loop(console: Console, config: Config, analysis: Analysis) -> N
         elif choice == "r":
             analysis = _run_analysis(console, config)
             render_summary(console, analysis)
+        elif choice == "s":
+            if sync_ui.run(console, analysis):
+                analysis = _run_analysis(console, config)
+                render_projects(console, analysis)
         else:
             next(fn for key, _, fn in MENU if key == choice)(console, analysis)
 
@@ -205,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     interactive = not args.non_interactive and sys.stdin.isatty()
     console = Console(no_color=args.no_color, highlight=False)
     console.print(Text(BANNER, style="bold cyan"))
-    console.print(Text("read-only analysis — no files or repositories are modified\n", style="dim italic"))
+    console.print(Text("analysis is read-only — repositories change only via the explicit reset option\n", style="dim italic"))
 
     try:
         config = _resolve_config(console, args.config.expanduser(), interactive)

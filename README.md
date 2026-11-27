@@ -2,7 +2,7 @@
 
 Tooling for the migration described in [MIGRATION_PLAN.md](MIGRATION_PLAN.md) (background: [CONTEXT.md](CONTEXT.md)).
 
-The current version is **read-only**. It analyzes the workspace and never modifies POMs or git repositories. Git is only queried; it never fetches, and `--no-optional-locks` keeps it from touching the index.
+The analysis is **read-only**: it never modifies POMs or git repositories. The one exception is the explicit, confirmed **reset to `origin/main`** menu option (see below). During analysis git is only queried: it never fetches, and `--no-optional-locks` keeps it from touching the index.
 
 ## What the report shows
 
@@ -99,6 +99,22 @@ Interactive menu:
 f  Full report    e  Export report    r  Re-scan    q  Quit
 ```
 
+### Reset all to clean `origin/main` (menu `s`, destructive)
+
+This is the only option that modifies repositories, and it only runs from the interactive menu. For every repository of the parent, the libraries and the services (each repository once, even if it holds several projects):
+
+1. `git fetch --prune origin`, then a **preview**: current branch, modified and untracked files, local `main` ahead of `origin/main`, unpushed commits. Repositories without `origin` or `origin/main` are skipped. Repositories that are already clean are left alone.
+2. You can exclude repositories by number, choose whether to delete untracked files (`git clean -fd`; ignored files such as `target/` and IDE settings are kept), and choose whether to make a **backup** (default: yes).
+3. Without backup, the tool lists exactly what will be lost. You must type `RESET` to continue.
+4. Per repository: `git checkout --force -B main origin/main`, set the upstream, `git reset --hard origin/main`, optionally `git clean -fd`.
+
+Backup and recovery:
+- Uncommitted and untracked work goes to `git stash` (`git stash list`, `git stash pop`).
+- Local `main` commits that aren't on `origin/main`, and commits on a detached HEAD, are kept as branches: `backup/pom-migrator/<timestamp>/...`.
+- Other local branches (e.g. `feature/x`) are **never deleted**. They simply stop being checked out.
+
+Remote and branch name are `REMOTE` / `BRANCH` in `pom_migrator/gitsync.py` (`origin` / `main`).
+
 Exit codes: `0` = no errors, `1` = the report contains errors, `2` = configuration problem, `130` = interrupted.
 
 ## Project layout
@@ -110,6 +126,8 @@ pom_migrator/
 ├── config.py     # TOML config load / validate / write
 ├── pom.py        # read-only pom.xml parsing (namespaces, comments, ${property} resolution)
 ├── gitinfo.py    # read-only git state
+├── gitsync.py    # reset to origin/main (fetch, plan, backup, execute)
+├── sync_ui.py    # interactive reset flow (preview, confirm, results)
 ├── scanner.py    # classification, library graph (cycles, build order), checks
 └── report.py     # rich rendering + export (html / txt / json)
 ```
