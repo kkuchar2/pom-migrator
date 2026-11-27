@@ -32,6 +32,43 @@ def _group_repositories(console: Console, analysis: Analysis) -> dict[Path, list
     return repos
 
 
+def _fetch_all(console: Console, repos: dict[Path, list[str]]) -> dict[Path, str | None]:
+    """Fetch without a storm of credential prompts.
+
+    A credential helper (e.g. Git Credential Manager on Windows) may open one sign-in window
+    per git process. So per remote host one repository is fetched alone first; that prompts
+    at most once and caches the credential. The rest of that host then runs in parallel,
+    or one by one if the first fetch failed (so a cancelled sign-in can't open many windows).
+    """
+    by_host: dict[str | None, list[Path]] = {}
+    for repo in repos:
+        by_host.setdefault(gitsync.remote_host(repo), []).append(repo)
+
+    errors: dict[Path, str | None] = {}
+    for host, host_repos in by_host.items():
+        if host is None:  # no remote: nothing to fetch, plan() reports the skip reason
+            errors.update({repo: None for repo in host_repos})
+            continue
+        label = host
+        first, rest = host_repos[0], host_repos[1:]
+        with console.status(
+            f"[cyan]Fetching {', '.join(repos[first])} ({label}) — sign in if asked…[/]", spinner="dots"
+        ):
+            errors[first] = gitsync.fetch(first)
+        if not rest:
+            continue
+        if errors[first] is None:
+            with console.status(f"[cyan]Fetching {len(rest)} more from {label}…[/]", spinner="dots"):
+                with ThreadPoolExecutor(max_workers=min(8, len(rest))) as pool:
+                    errors.update(zip(rest, pool.map(gitsync.fetch, rest)))
+        else:
+            console.print(f"[yellow]⚠ Fetch from {label} failed ({errors[first]}); continuing one at a time.[/]")
+            for repo in rest:
+                with console.status(f"[cyan]Fetching {', '.join(repos[repo])} ({label})…[/]", spinner="dots"):
+                    errors[repo] = gitsync.fetch(repo)
+    return errors
+
+
 def _number(value: int, style: str) -> Text:
     return Text(str(value), style=style) if value else Text("0", style="dim")
 
@@ -113,9 +150,8 @@ def run(console: Console, analysis: Analysis) -> bool:
         console.print("[yellow]No git repositories found.[/]")
         return False
 
-    with console.status(f"[cyan]Fetching {gitsync.REMOTE} for {len(repos)} repositories…[/]", spinner="dots"):
-        with ThreadPoolExecutor(max_workers=min(8, len(repos))) as pool:
-            fetch_errors = dict(zip(repos, pool.map(gitsync.fetch, repos)))
+    fetch_errors = _fetch_all(console, repos)
+    with console.status("[cyan]Inspecting repositories…[/]", spinner="dots"):
         plans = [gitsync.plan(repo, names, fetch_errors[repo]) for repo, names in repos.items()]
 
     _render_plans(console, plans)
