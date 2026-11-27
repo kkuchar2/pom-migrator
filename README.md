@@ -155,6 +155,12 @@ Results are read from `target/surefire-reports` and `target/failsafe-reports` of
 
 Output: one row per module (result, tests, passed, failed, errors, skipped, build time, test time) with a total row, a list of failing tests with their message, a timing panel (clean build, test run, total), and optionally a per-class table. If the clean build fails, its errors are shown and you choose whether to run the tests of the modules that did build; those show `build failed` / `not run`. If reports from an earlier build exist, you can show them without running Maven. Old reports are deleted before a new run so skipped modules never show stale results. Full log of both runs: `pom-migrator-test.log`.
 
+**Contract stubs** (Spring Cloud Contract), checked after the build:
+
+- A module is expected to produce stubs if its `pom.xml` uses `spring-cloud-contract-maven-plugin` or a `stubs` classifier, if it has `src/test/resources/contracts`, or if the parent applies the plugin in `<build><plugins>`.
+- For each such module: `target/<artifactId>-<version>-stubs.jar` exists, its version equals the module version, the `META-INF/<groupId>/<artifactId>/<version>/` path inside the jar matches, and it contains WireMock mappings. The table shows the coordinate it will be published as (`group:artifact:version:stubs`), with mapping and contract counts.
+- Stub references in the test sources of the parent modules and of the services (`stubrunner.ids`, `@AutoConfigureStubRunner(ids = ...)`) are listed: `latest (+)`, the current version, a **pinned** old version (warning: after consolidation stubs are published with the parent version), or a library that produces no stubs (error).
+
 Exit codes: `0` = no errors, `1` = the report contains errors, `2` = configuration problem, `130` = interrupted.
 
 ## Project layout
@@ -172,7 +178,8 @@ pom_migrator/
 ├── consolidate.py      # plan / copy / rewrite POMs / revert
 ├── consolidate_ui.py   # interactive consolidation flow + build verification
 ├── testreport.py # reads surefire/failsafe XML reports per module
-├── tests_ui.py   # interactive test results table
+├── stubs.py      # contract stub jars (version, content) + stub references
+├── tests_ui.py   # interactive build time / test results / stubs
 ├── maven.py      # runs mvn, condenses output (module results, errors)
 ├── scanner.py    # classification, library graph (cycles, build order), checks
 └── report.py     # rich rendering + export (html / txt / json)

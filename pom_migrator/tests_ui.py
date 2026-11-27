@@ -11,7 +11,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
 
-from . import maven
+from . import maven, stubs
 from .pomedit import PomEditError, parse_tree
 from .scanner import Analysis
 from .testreport import ModuleResult, collect, list_modules, remove_old_reports
@@ -138,6 +138,75 @@ def _render(console: Console, results: list[ModuleResult], reactor: dict[str, st
         console.print("[yellow]No test reports found.[/]")
 
 
+def _render_stubs(console: Console, parent_dir: Path, modules: list[str], analysis: Analysis) -> None:
+    checks = stubs.check_modules(parent_dir, modules)
+    relevant = [c for c in checks if c.relevant]
+    libraries = {c.artifact_id for c in checks if c.artifact_id}
+    projects = [(m, parent_dir / m) for m in modules] + [(s.name, s.path) for s in analysis.services]
+    refs = stubs.find_references(projects, libraries)
+    if not relevant and not refs:
+        console.print("[dim]Stubs: no module produces contract stubs and no stub references were found.[/]")
+        return
+
+    if relevant:
+        versions = {c.version for c in checks if c.version}
+        table = Table(title="Contract stubs", title_justify="left", title_style="bold",
+                      box=box.ROUNDED, header_style="bold")
+        table.add_column("Module", style="bold cyan", no_wrap=True)
+        table.add_column("Result")
+        table.add_column("Stub artifact (as published)")
+        table.add_column("Mappings", justify="right")
+        table.add_column("Contracts", justify="right")
+        table.add_column("Details", overflow="fold")
+        for c in relevant:
+            if c.ok:
+                result = Text("✔ ok", style="green")
+            elif c.jar is None:
+                result = Text("✖ missing", style="bold red")
+            else:
+                result = Text("✖ check", style="bold red")
+            details = Text("\n".join(c.problems), style="red") if c.problems else Text(
+                c.expected or "built without an explicit stubs setup", style="dim")
+            table.add_row(c.module, result, c.coordinate if c.jar else Text("–", style="dim"),
+                          str(c.mappings) if c.jar else "–", str(c.contracts) if c.jar else "–", details)
+        console.print(table)
+        bad = [c for c in relevant if not c.ok]
+        if bad:
+            console.print(f"[bold red]✖ {len(bad)} of {len(relevant)} stub modules have problems[/]")
+        else:
+            console.print(f"[bold green]✔ {len(relevant)} module(s) produce stubs, all with version "
+                          f"{', '.join(sorted(versions)) or '?'}[/]")
+
+    if refs:
+        current = next((c.version for c in checks if c.version), None)
+        producers = {c.artifact_id for c in checks if c.jar}
+        table = Table(title="Stub references in tests (stubrunner.ids / @AutoConfigureStubRunner)",
+                      title_justify="left", title_style="bold", box=box.SIMPLE_HEAD, header_style="bold")
+        table.add_column("Project", style="cyan", no_wrap=True)
+        table.add_column("File")
+        table.add_column("Stub id")
+        table.add_column("Version")
+        for r in refs:
+            if r.library not in producers:
+                version = Text(f"✖ {r.library} produces no stubs", style="bold red")
+            elif r.version in (None, "+"):
+                version = Text("latest (+)", style="green")
+            elif current and r.version == current:
+                version = Text(r.version, style="green")
+            else:
+                version = Text(f"pinned {r.version}", style="yellow")
+            table.add_row(r.project, f"{r.file.as_posix()}:{r.line}", r.stub_id, version)
+        console.print(table)
+        orphans = [r for r in refs if r.library not in producers]
+        if orphans:
+            console.print(f"[bold red]✖ {len(orphans)} reference(s) to stubs that no module in the parent builds "
+                          f"({', '.join(sorted({r.library for r in orphans}))})[/]")
+        pinned = [r for r in refs if r.library in producers and r.version not in (None, "+") and r.version != current]
+        if pinned:
+            console.print(f"[yellow]⚠ {len(pinned)} reference(s) pin an old stub version. After consolidation all stubs "
+                          f"are published with the parent version; use '+' or the new version.[/]")
+
+
 def _render_classes(console: Console, results: list[ModuleResult]) -> None:
     table = Table(title="Tests per class", title_justify="left", title_style="bold",
                   box=box.SIMPLE_HEAD, header_style="bold")
@@ -189,6 +258,7 @@ def run(console: Console, analysis: Analysis) -> None:
     if mode == "existing":
         results = collect(parent_dir, modules)
         _render(console, results, {})
+        _render_stubs(console, parent_dir, modules, analysis)
         _offer_classes(console, results)
         return
 
@@ -235,6 +305,7 @@ def run(console: Console, analysis: Analysis) -> None:
     timing.add_row("Total", _seconds(build.wall_seconds + tests.wall_seconds), "both runs; one mvn clean verify in CI takes about the same")
     console.print(Panel(timing, title="[bold]Timing[/]", border_style="cyan", expand=False))
     console.print(f"[dim]Full log (both runs): {LOG_FILE.resolve()}[/]")
+    _render_stubs(console, parent_dir, modules, analysis)
     _offer_classes(console, results)
 
 
