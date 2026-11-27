@@ -49,7 +49,14 @@ def load_config(path: Path) -> Config:
     except FileNotFoundError:
         raise ConfigError(f"Config file not found: {path}") from None
     except tomllib.TOMLDecodeError as exc:
-        raise ConfigError(f"Invalid TOML in {path}: {exc}") from None
+        message = f"Invalid TOML in {path}: {exc}"
+        if "\\" in path.read_text(encoding="utf-8", errors="replace"):
+            message += (
+                "\nHint: inside double quotes TOML treats \\ as an escape character (e.g. \\U in C:\\Users)."
+                "\n      For Windows paths use single quotes:  root = 'C:\\Users\\me\\projects'"
+                "\n      or forward slashes:                  root = \"C:/Users/me/projects\""
+            )
+        raise ConfigError(message) from None
     except OSError as exc:
         raise ConfigError(f"Cannot read {path}: {exc}") from None
 
@@ -87,21 +94,29 @@ def load_config(path: Path) -> Config:
     )
 
 
+def _toml_string(value: str) -> str:
+    """Prefer TOML literal strings ('...'): no escaping, so Windows paths stay readable."""
+    if "'" not in value and "\n" not in value and "\r" not in value:
+        return f"'{value}'"
+    return json.dumps(value)  # JSON string escaping is valid TOML basic-string escaping
+
+
 def render_config(config: Config) -> str:
-    """Serialize config to TOML (JSON string escaping is valid TOML basic-string escaping)."""
-    libs = "".join(f"    {json.dumps(name)},\n" for name in config.library_dirs)
+    """Serialize config to TOML."""
+    libs = "".join(f"    {_toml_string(name)},\n" for name in config.library_dirs)
     return (
         "# pom-migrator workspace configuration\n"
         "\n"
         "[workspace]\n"
         "# Directory that contains all projects (absolute, ~, or relative to this file)\n"
-        f"root = {json.dumps(str(config.root))}\n"
+        "# Windows: use single quotes ('C:\\Users\\me\\projects') or forward slashes\n"
+        f"root = {_toml_string(str(config.root))}\n"
         "\n"
         "# Only directories starting with this prefix are scanned (\"\" = all)\n"
-        f"prefix = {json.dumps(config.prefix)}\n"
+        f"prefix = {_toml_string(config.prefix)}\n"
         "\n"
         "# Directory name of the parent project\n"
-        f"parent = {json.dumps(config.parent_dir)}\n"
+        f"parent = {_toml_string(config.parent_dir)}\n"
         "\n"
         "# Directory names of library projects; every other project using parent is a service\n"
         "libraries = [\n"

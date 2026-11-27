@@ -3,6 +3,10 @@
 
 [workspace]
 # Directory that contains all projects (absolute, ~, or relative to this file)
+# Windows paths: use single quotes (literal string, backslashes kept as is)
+#   root = 'C:\Users\me\projects'
+# or forward slashes: root = "C:/Users/me/projects"
+# Do NOT use backslashes inside double quotes ("C:\Users" fails: \U is an escape).
 root = "~/projects"
 
 # Only directories starting with this prefix are scanned ("" = all)

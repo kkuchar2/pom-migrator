@@ -62,6 +62,8 @@ libraries = [                # directory names of library projects
 ]
 ```
 
+**Windows paths:** in TOML, `\` inside double quotes starts an escape sequence, so `"C:\Users\me"` fails with *Invalid hex value*. Use single quotes, `root = 'C:\Users\me\projects'`, or forward slashes, `root = "C:/Users/me/projects"`.
+
 If you have no config file yet, just start the tool. It offers to create one interactively: it lists the directories, and you pick the parent and the libraries by number (e.g. `2,4,6-9`).
 
 ## Running
